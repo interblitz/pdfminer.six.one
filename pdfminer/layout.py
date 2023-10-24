@@ -520,7 +520,7 @@ class LTTextLine(LTTextContainer[TextLineElement]):
         return
 
     def find_neighbors(
-        self, plane: Plane[LTComponentT], ratio: float
+        self, plane: Plane[LTComponentT], ratio: float, otherobjs: Iterable[LTComponent] = None
     ) -> List["LTTextLine"]:
         raise NotImplementedError
 
@@ -546,7 +546,7 @@ class LTTextLineHorizontal(LTTextLine):
         return
 
     def find_neighbors(
-        self, plane: Plane[LTComponentT], ratio: float
+        self, plane: Plane[LTComponentT], ratio: float, otherobjs: Iterable[LTComponent] = None
     ) -> List[LTTextLine]:
         """
         Finds neighboring LTTextLineHorizontals in the plane.
@@ -555,7 +555,14 @@ class LTTextLineHorizontal(LTTextLine):
         close to self. "Close" can be controlled by ratio. The returned objects
         will be the same height as self, and also either left-, right-, or
         centrally-aligned.
+
+        Addition
+        If there is another object between neighbours then they are not ones
         """
+
+        if "01.04.2023" in self.get_text():
+            a = 1
+
         d = ratio * self.height
         objs = plane.find((self.x0, self.y0 - d, self.x1, self.y1 + d))
         return [
@@ -569,6 +576,7 @@ class LTTextLineHorizontal(LTTextLine):
                     or self._is_right_aligned_with(obj, tolerance=d)
                     or self._is_centrally_aligned_with(obj, tolerance=d)
                 )
+                and not self._is_another_object_between(obj, otherobjs)
             )
         ]
 
@@ -595,6 +603,20 @@ class LTTextLineHorizontal(LTTextLine):
     def _is_same_height_as(self, other: LTComponent, tolerance: float = 0) -> bool:
         return abs(other.height - self.height) <= tolerance
 
+    def _is_another_object_between(self, other: LTComponent, otherobjs: Iterable[LTComponent]):
+        if self != other:
+            for obj in otherobjs:
+                if obj.y0 > 0 and obj.y1 > 0 and obj.x0 > 0 and obj.x1 > 0:
+                    self_mid_y = (self.y0 + self.y1) / 2
+                    other_mid_y = (other.y0 + other.y1) / 2
+                    if self_mid_y < obj.y0 < other_mid_y or other_mid_y < obj.y0 < self_mid_y \
+                            or self_mid_y < obj.y1 < other_mid_y or other_mid_y < obj.y1 < self_mid_y:
+                        if self.x0 >= obj.x0 <= self.x1 or self.x0 >= obj.x1 <= self.x1 or (obj.x0 <= self.x0 and obj.x1 >= self.x1):
+                            return True
+                        elif other.x0 >= obj.x0 <= other.x1 or other.x0 >= obj.x1 <= other.x1 or (obj.x0 <= other.x0 and obj.x1 >= other.x1):
+                            return True
+        return False
+
 
 class LTTextLineVertical(LTTextLine):
     def __init__(self, word_margin: float) -> None:
@@ -614,7 +636,7 @@ class LTTextLineVertical(LTTextLine):
         return
 
     def find_neighbors(
-        self, plane: Plane[LTComponentT], ratio: float
+        self, plane: Plane[LTComponentT], ratio: float, otherobjs: Iterable[LTComponent] = None
     ) -> List[LTTextLine]:
         """
         Finds neighboring LTTextLineVerticals in the plane.
@@ -833,14 +855,14 @@ class LTLayoutContainer(LTContainer[LTComponent]):
         return
 
     def group_textlines(
-        self, laparams: LAParams, lines: Iterable[LTTextLine]
+        self, laparams: LAParams, lines: Iterable[LTTextLine], otherobjs: Iterable[LTComponent] = None
     ) -> Iterator[LTTextBox]:
         """Group neighboring lines to textboxes"""
         plane: Plane[LTTextLine] = Plane(self.bbox)
         plane.extend(lines)
         boxes: Dict[LTTextLine, LTTextBox] = {}
         for line in lines:
-            neighbors = line.find_neighbors(plane, laparams.line_margin)
+            neighbors = line.find_neighbors(plane, laparams.line_margin, otherobjs)
             members = [line]
             for obj1 in neighbors:
                 members.append(obj1)
@@ -968,7 +990,7 @@ class LTLayoutContainer(LTContainer[LTComponent]):
         (empties, textlines) = fsplit(lambda obj: obj.is_empty(), textlines)
         for obj in empties:
             obj.analyze(laparams)
-        textboxes = list(self.group_textlines(laparams, textlines))
+        textboxes = list(self.group_textlines(laparams, textlines, otherobjs))
         if laparams.boxes_flow is None:
             for textbox in textboxes:
                 textbox.analyze(laparams)
