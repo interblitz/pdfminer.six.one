@@ -527,6 +527,48 @@ class LTTextLine(LTTextContainer[TextLineElement]):
     def is_empty(self) -> bool:
         return super().is_empty() or self.get_text().isspace()
 
+    def get_font_name(self) -> str:
+        """Contains a list of LTChar objects that represent a single text line.
+        Return most used font name
+        """
+        font_name = ''
+        font_names = {}
+        for obj in self._objs:
+            if isinstance(obj, LTChar):
+                count = font_names.get(obj.fontname)
+                if count is None:
+                    count = 0
+                font_names[obj.fontname] = count + 1
+
+        max_count = 0
+        for item in font_names:
+            if font_names[item] > max_count:
+                max_count = font_names[item]
+                font_name = item
+
+        return font_name
+
+    def get_font_size(self) -> str:
+        """Contains a list of LTChar objects that represent a single text line.
+        Return most used font name
+        """
+        font_size = ''
+        font_sizes = {}
+        for obj in self._objs:
+            if isinstance(obj, LTChar):
+                count = font_sizes.get(obj.size)
+                if count is None:
+                    count = 0
+                font_sizes[obj.size] = count + 1
+
+        max_count = 0
+        for item in font_sizes:
+            if font_sizes[item] > max_count:
+                max_count = font_sizes[item]
+                font_size = item
+
+        return font_size
+
 
 class LTTextLineHorizontal(LTTextLine):
     def __init__(self, word_margin: float) -> None:
@@ -558,27 +600,64 @@ class LTTextLineHorizontal(LTTextLine):
 
         Addition
         If there is another object between neighbours then they are not ones
+        If neighbours have different font name and size they are not ones
+        Neighbours should have same line margin
         """
 
-        if "01.04.2023" in self.get_text():
+        if "С 01.01.2023 ПО 02.04.2023" in self.get_text():
             a = 1
 
         d = ratio * self.height
-        objs = plane.find((self.x0, self.y0 - d, self.x1, self.y1 + d))
-        return [
+        #Looking for objects below self
+        objs = plane.find((self.x0, self.y0 - d, self.x1, self.y1))
+        all_neighbours = [
             obj
             for obj in objs
             if (
-                isinstance(obj, LTTextLineHorizontal)
-                and self._is_same_height_as(obj, tolerance=d)
-                and (
-                    self._is_left_aligned_with(obj, tolerance=d)
-                    or self._is_right_aligned_with(obj, tolerance=d)
-                    or self._is_centrally_aligned_with(obj, tolerance=d)
+                self == obj or
+                (
+                    isinstance(obj, LTTextLineHorizontal)
+                    and self._is_same_height_as(obj, tolerance=d)
+                    and (
+                        self._is_left_aligned_with(obj, tolerance=d)
+                        or self._is_right_aligned_with(obj, tolerance=d)
+                        or self._is_centrally_aligned_with(obj, tolerance=d)
+                    )
+                    and not self._is_another_object_between(obj, otherobjs)
+                    #and self._is_same_font_name_as(obj)
+                    #and self._is_same_font_size_as(obj)
                 )
-                and not self._is_another_object_between(obj, otherobjs)
             )
         ]
+
+        ### Check neighbours for same style
+        ### all_neighbours contains only below self ones
+        neighbours = []
+        v_sorted_neighbours = sorted(all_neighbours, key=lambda obj: obj.y0, reverse=True)
+        for obj in v_sorted_neighbours:
+            if self._is_same_font_name_as(obj) and self._is_same_font_size_as(obj):
+                neighbours.append(obj)
+            else:
+                break
+
+        ### Check neighbours for same line margins
+        ### Looking for objects around self for getting more margins infof
+        around_objs_iterator = plane.find((self.x0, self.y0 - d, self.x1, self.y1 + d))
+        around_objs = [obj for obj in around_objs_iterator]
+        if len(around_objs) > 2:
+            v_uniform_neighbours = []
+            v_all_uniform_neighbours = self.get_distributed_uniform_vertically(around_objs)
+            if self in v_all_uniform_neighbours:
+                for obj in neighbours:
+                    if obj in v_all_uniform_neighbours:
+                        v_uniform_neighbours.append(obj)
+            else:
+                v_uniform_neighbours.append(self)
+        else:
+            v_uniform_neighbours = neighbours
+
+        return v_uniform_neighbours
+
 
     def _is_left_aligned_with(self, other: LTComponent, tolerance: float = 0) -> bool:
         """
@@ -603,7 +682,7 @@ class LTTextLineHorizontal(LTTextLine):
     def _is_same_height_as(self, other: LTComponent, tolerance: float = 0) -> bool:
         return abs(other.height - self.height) <= tolerance
 
-    def _is_another_object_between(self, other: LTComponent, otherobjs: Iterable[LTComponent]):
+    def _is_another_object_between(self, other: LTComponent, otherobjs: Iterable[LTComponent]) -> bool:
         if self != other:
             for obj in otherobjs:
                 if obj.y0 > 0 and obj.y1 > 0 and obj.x0 > 0 and obj.x1 > 0:
@@ -616,6 +695,45 @@ class LTTextLineHorizontal(LTTextLine):
                         elif other.x0 >= obj.x0 <= other.x1 or other.x0 >= obj.x1 <= other.x1 or (obj.x0 <= other.x0 and obj.x1 >= other.x1):
                             return True
         return False
+
+    def _is_same_font_name_as(self, other: LTComponent) -> bool:
+        return other == self or other.get_font_name() == self.get_font_name()
+
+    def _is_same_font_size_as(self, other: LTComponent) -> bool:
+        return other == self or abs(other.get_font_size() - self.get_font_size()) < 0.5
+
+    def get_distributed_uniform_vertically(self, neighbours: List[LTTextLine]) -> List[LTTextLine]:
+        v_uniform_neighbours = []
+        v_sorted_neighbours = sorted(neighbours, key = lambda obj : obj.y0, reverse=True)
+        v_min_distance = 9999999
+        v_min_ratio = 9999999
+        v_prev_obj = None
+        for obj in v_sorted_neighbours:
+            if v_prev_obj is not None:
+                v_distance = v_prev_obj.vdistance(obj)
+                v_ratio = min(v_distance / v_prev_obj.height, v_distance / obj.height)
+                if v_min_ratio > v_ratio:
+                    v_min_distance = v_distance
+                    v_min_ratio = v_ratio
+            v_prev_obj = obj
+
+        v_prev_obj = None
+        for obj in v_sorted_neighbours:
+            if v_prev_obj is not None:
+                v_distance = v_prev_obj.vdistance(obj)
+                v_ratio = min(v_distance / v_prev_obj.height, v_distance / obj.height)
+                #if v_distance <= v_min_distance:
+                if abs(v_ratio - v_min_ratio) < 0.05:
+                    v_uniform_neighbours.append(v_prev_obj)
+                    v_uniform_neighbours.append(obj)
+                else:
+                    if self in v_uniform_neighbours:
+                        break
+                    else:
+                        v_uniform_neighbours.clear()
+            v_prev_obj = obj
+
+        return v_uniform_neighbours
 
 
 class LTTextLineVertical(LTTextLine):
