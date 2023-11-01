@@ -8,12 +8,9 @@ Changes
 -------
 
 * Added text style analyses for grouping lines algorithm
-* Added lines, rect and other objects analyses for grouping lines algorithm
+* Added lines, rects and other objects analyses for grouping lines algorithm
 * LAParams.line_margin can be greater for better grouping lines result, recommended value is 4. 
 * LAParams.NeighborMatcher can be used for custom final neighbors detection, for example NeighborMatcher can use AI or NLTK for accepting or declining text lines grouping
-
-
-* Written entirely in Python.
 
 pdfminer.six
 ============
