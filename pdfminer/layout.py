@@ -612,6 +612,10 @@ class LTTextLineHorizontal(LTTextLine):
         Custom NeighborMatcher is used as final step of neighbors detecting
         """
 
+        if neighbors_matcher is not None:
+            if not neighbors_matcher.get_is_neighbors_available(self):
+                return []
+
         d = ratio * self.height
 
         ### Addition
@@ -715,12 +719,12 @@ class LTTextLineHorizontal(LTTextLine):
     def _is_another_object_between(self, other: LTComponent, otherobjs: Iterable[LTComponent]) -> bool:
         if self != other:
             for obj in otherobjs:
-                if obj.y0 > 0 and obj.y1 > 0 and obj.x0 > 0 and obj.x1 > 0:
+                if obj.y0 > 0 and obj.y1 > 0 and obj.x0 > 0 and obj.x1 > 0 and obj.x0 > obj.x1:
                     self_mid_y = (self.y0 + self.y1) / 2
                     other_mid_y = (other.y0 + other.y1) / 2
                     if self_mid_y < obj.y0 < other_mid_y or other_mid_y < obj.y0 < self_mid_y \
                             or self_mid_y < obj.y1 < other_mid_y or other_mid_y < obj.y1 < self_mid_y:
-                        if self.x0 >= obj.x0 <= self.x1 or self.x0 >= obj.x1 <= self.x1 or (
+                        if self.x0 <= obj.x0 <= self.x1 or self.x0 <= obj.x1 <= self.x1 or (
                                 obj.x0 <= self.x0 and obj.x1 >= self.x1):
                             return True
                         elif other.x0 >= obj.x0 <= other.x1 or other.x0 >= obj.x1 <= other.x1 or (
@@ -733,6 +737,15 @@ class LTTextLineHorizontal(LTTextLine):
 
     def _is_same_font_size_as(self, other: LTComponent) -> bool:
         return other == self or abs(other.get_font_size() - self.get_font_size()) < 0.5
+
+    def _is_font_bold(self: LTComponent) -> bool:
+        font_name = self.get_font_name()
+        if font_name is not None:
+            import re
+            return re.search(r"-Bold\b", font_name, re.IGNORECASE) is not None \
+                    or re.search(r"-Bold-", font_name, re.IGNORECASE) is not None
+
+        return False
 
     def get_distributed_uniform_vertically(self, neighbors: List[LTTextLine]) -> List[LTTextLine]:
         v_uniform_neighbors = []

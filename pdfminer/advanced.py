@@ -46,6 +46,9 @@ class NeighborMatcher:
     def matched(self, prev_text_line: 'LTTextLine', text_line: 'LTTextLine') -> bool:
         pass
 
+    def get_is_neighbors_available(self, text_line: 'LTTextLine') -> bool:
+        return True
+
 
 class Alignment(Enum):
     No = 0
